@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Globe Scroll + Drag</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/three@0.155.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/gsap@3.12.2/dist/gsap.min.js"></script>
+  <script src="https://unpkg.com/gsap@3.12.2/dist/ScrollTrigger.min.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #000;
+      color: #fff;
+      overflow-x: hidden;
+    }
+
+    .spacer-50vh {
+      height: 50vh;
+    }
+
+    .spacer-100vh {
+      height: 100vh;
+    }
+
+    .globe-section {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+    }
+
+    .overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+      pointer-events: none;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+    }
+
+    @media(min-width: 768px) {
+      h1 {
+        font-size: 3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="spacer-50vh"></div>
+
+  <section class="globe-section">
+    <canvas id="globeCanvas"></canvas>
+    <div class="overlay">
+      <h1>Hello from the world.</h1>
+    </div>
+  </section>
+
+  <div class="spacer-100vh"></div>
+
+  <script>
+    let scene, camera, renderer, pointCloud;
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let rotation = { x: 0, y: 0 };
+    let scrollRotationY = 0;
+
+    init();
+    animate();
+
+    function init() {
+      const canvas = document.getElementById("globeCanvas");
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+      camera.position.z = 4;
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true });
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+
+      loadEarthPoints();
+
+      canvas.addEventListener("mousedown", () => { isDragging = true; });
+      canvas.addEventListener("mouseup", () => { isDragging = false; });
+      canvas.addEventListener("mouseleave", () => { isDragging = false; });
+
+      canvas.addEventListener("mousemove", (event) => {
+        if (!isDragging) return;
+        let deltaX = event.clientX - previousMousePosition.x;
+        let deltaY = event.clientY - previousMousePosition.y;
+        rotation.y += deltaX * 0.005;
+        rotation.x += deltaY * 0.005;
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+      });
+
+      canvas.addEventListener("mousedown", (event) => {
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+      });
+
+      window.addEventListener("resize", onResize);
+
+      gsap.to({}, {
+        scrollTrigger: {
+          trigger: "body",
+          start: "top top",
+          end: "bottom bottom",
+          scrub: true,
+          onUpdate: (self) => {
+            scrollRotationY = self.progress * Math.PI * 2;
+          }
+        }
+      });
+    }
+
+    function loadEarthPoints() {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = "earthmap_bw.avif";
+
+      img.onload = () => {
+        const tempCanvas = document.createElement("canvas");
+        const ctx = tempCanvas.getContext("2d");
+        const width = img.width;
+        const height = img.height;
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, width, height).data;
+
+        const points = [];
+
+        for (let y = 0; y < height; y += 2) {
+          for (let x = 0; x < width; x += 2) {
+            const index = (y * width + x) * 4;
+            const r = imageData[index];
+            const g = imageData[index + 1];
+            const b = imageData[index + 2];
+            const brightness = (r + g + b) / 3;
+
+            if (brightness > 128) {
+              const lon = (x / width) * 2 * Math.PI - Math.PI;
+              const lat = (y / height) * Math.PI - Math.PI / 2;
+              const radius = 2.4;
+              const px = radius * Math.cos(lat) * Math.cos(lon);
+              const py = radius * Math.sin(lat);
+              const pz = radius * Math.cos(lat) * Math.sin(lon);
+              points.push(px, py, pz);
+            }
+          }
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+
+        const material = new THREE.PointsMaterial({
+          color: 0x9966ff,
+          size: 0.03,
+          transparent: true,
+          opacity: 0.9
+        });
+
+        pointCloud = new THREE.Points(geometry, material);
+        scene.add(pointCloud);
+      };
+    }
+
+    function onResize() {
+      const canvas = document.getElementById("globeCanvas");
+      camera.aspect = canvas.clientWidth / canvas.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (pointCloud) {
+        pointCloud.rotation.y = scrollRotationY + rotation.y;
+        pointCloud.rotation.x = rotation.x;
+        rotation.y += 0.001;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    gsap.from("h1", {
+      opacity: 0,
+      y: 30,
+      duration: 1.2,
+      ease: "power2.out"
+    });
+  </script>
+
+</body>
+</html>
