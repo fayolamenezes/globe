@@ -38,12 +38,22 @@
       overflow: hidden;
     }
 
+    .globe-container {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 50%, rgba(0,0,0,0.5) 75%, rgba(0,0,0,0) 100%);
+      -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 50%, rgba(0,0,0,0.5) 75%, rgba(0,0,0,0) 100%);
+    }
+
     canvas {
       position: relative;
       width: 100%;
       height: 100%;
       display: block;
       z-index: 0;
+      cursor: grab;
     }
 
     .overlay {
@@ -51,9 +61,19 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 1;
+      z-index: 2;
       pointer-events: none;
       text-align: center;
+    }
+
+    .fade-mask {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 20%;
+      background: linear-gradient(to bottom, transparent 0%, black 100%);
+      pointer-events: none;
+      z-index: 1;
     }
 
     h1 {
@@ -65,6 +85,12 @@
         font-size: 3rem;
       }
     }
+
+    @media(max-width: 768px) {
+      .overlay h1 {
+        font-size: 1.6rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -72,7 +98,10 @@
   <div class="spacer-50vh"></div>
 
   <section class="globe-section">
-    <canvas id="globeCanvas"></canvas>
+    <div class="globe-container">
+      <canvas id="globeCanvas"></canvas>
+      <div class="fade-mask"></div>
+    </div>
     <div class="overlay">
       <h1>Hello from the world.</h1>
     </div>
@@ -86,6 +115,7 @@
     let previousMousePosition = { x: 0, y: 0 };
     let rotation = { x: 0, y: 0 };
     let scrollRotationY = 0;
+    let globeSize = window.innerWidth <= 768 ? 1.8 : 2.5;
 
     init();
     animate();
@@ -102,9 +132,21 @@
 
       loadEarthPoints();
 
-      canvas.addEventListener("mousedown", () => { isDragging = true; });
-      canvas.addEventListener("mouseup", () => { isDragging = false; });
-      canvas.addEventListener("mouseleave", () => { isDragging = false; });
+      canvas.addEventListener("mousedown", (event) => {
+        isDragging = true;
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+        canvas.style.cursor = "grabbing";
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        isDragging = false;
+        canvas.style.cursor = "grab";
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        isDragging = false;
+        canvas.style.cursor = "grab";
+      });
 
       canvas.addEventListener("mousemove", (event) => {
         if (!isDragging) return;
@@ -112,10 +154,6 @@
         let deltaY = event.clientY - previousMousePosition.y;
         rotation.y += deltaX * 0.005;
         rotation.x += deltaY * 0.005;
-        previousMousePosition = { x: event.clientX, y: event.clientY };
-      });
-
-      canvas.addEventListener("mousedown", (event) => {
         previousMousePosition = { x: event.clientX, y: event.clientY };
       });
 
@@ -162,7 +200,7 @@
             if (brightness > 128) {
               const lon = (x / width) * 2 * Math.PI - Math.PI;
               const lat = (y / height) * Math.PI - Math.PI / 2;
-              const radius = 2.4;
+              const radius = globeSize;
               const px = radius * Math.cos(lat) * Math.cos(lon);
               const py = radius * Math.sin(lat);
               const pz = radius * Math.cos(lat) * Math.sin(lon);
@@ -175,7 +213,7 @@
         geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
 
         const material = new THREE.PointsMaterial({
-          color: 0x9966ff,
+          color: "#910cff",
           size: 0.03,
           transparent: true,
           opacity: 0.9
@@ -191,6 +229,7 @@
       camera.aspect = canvas.clientWidth / canvas.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      globeSize = window.innerWidth <= 768 ? 1.8 : 2.4;
     }
 
     function animate() {
